@@ -192,3 +192,16 @@ def get_classic(
             adaptive_c=adaptive_c,
         )
     return _cached[key]
+
+
+def working_image(
+    image: ImageInput,
+    *,
+    apply_preprocess: bool,
+    method: ClassicMethod = "receipt",
+) -> tuple[np.ndarray, ClassicResult | None]:
+    """Return the image to run layout on, and the enhance result if preprocess ran."""
+    if not apply_preprocess:
+        return _to_rgb(image), None
+    result = get_classic(method=method).predict(image)
+    return result.enhanced, result

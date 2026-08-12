@@ -1,4 +1,4 @@
-"""Streamlit demo: classic image preprocess + optional PP-Layout overlay."""
+"""Streamlit demo: optional classic preprocess + optional PP-Layout overlay."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
-from classic_enhance import CLASSIC_METHODS, ClassicMethod, get_classic
+from classic_enhance import CLASSIC_METHODS, ClassicMethod, working_image
 from layout_detect import (
     DEFAULT_LAYOUT_MODEL,
     LAYOUT_MODELS,
@@ -23,14 +23,20 @@ st.set_page_config(
 )
 
 st.title("Classic Preprocess")
-st.caption("원본 → ×3 upscale → CLAHE → Unsharp → mild denoise · 선택: PP-Layout 영역 박스")
+st.caption("전처리·PP-Layout을 각각 켜고 끌 수 있습니다")
 
 with st.sidebar:
     st.header("전처리")
+    apply_preprocess = st.checkbox(
+        "전처리 적용",
+        value=True,
+        help="끄면 원본에 바로 레이아웃 검출을 돌립니다.",
+    )
     pp_method: ClassicMethod = st.selectbox(  # type: ignore[assignment]
         "method",
         options=list(CLASSIC_METHODS),
         index=list(CLASSIC_METHODS).index("receipt"),
+        disabled=not apply_preprocess,
         help="receipt=×3→CLAHE→Unsharp→mild denoise (기본)",
     )
     st.divider()
@@ -41,7 +47,7 @@ with st.sidebar:
         "PP-Layout으로 영역 검출",
         value=False,
         disabled=not layout_ready(),
-        help="전처리 결과에서 PP-DocLayout으로 영역을 찾고 박스를 그립니다.",
+        help="전처리가 켜져 있으면 전처리 결과, 꺼져 있으면 원본에서 영역을 찾습니다.",
     )
     layout_model = st.selectbox(
         "model",
@@ -67,21 +73,32 @@ uploaded = st.file_uploader(
 )
 
 if uploaded is None:
-    st.info("이미지를 업로드한 뒤 전처리를 실행하세요.")
+    st.info("이미지를 업로드한 뒤 실행하세요.")
     st.stop()
 
 pil = Image.open(uploaded).convert("RGB")
 st.write(f"원본 크기: **{pil.size[0]} × {pil.size[1]}** · `{uploaded.name}`")
 
-run = st.button("전처리 실행", type="primary", use_container_width=True)
+if not apply_preprocess and not draw_layout:
+    st.warning("전처리 또는 레이아웃 검출 중 하나 이상을 켜세요.")
+
+run = st.button("실행", type="primary", use_container_width=True)
 if not run:
     st.subheader("원본")
     st.image(pil, use_container_width=True)
     st.stop()
 
-with st.spinner("전처리 중…"):
+if not apply_preprocess and not draw_layout:
+    st.stop()
+
+pp_result = None
+with st.spinner("전처리 중…" if apply_preprocess else "이미지 준비 중…"):
     try:
-        result = get_classic(method=pp_method).predict(pil)
+        working, pp_result = working_image(
+            pil,
+            apply_preprocess=apply_preprocess,
+            method=pp_method,
+        )
     except Exception as exc:  # noqa: BLE001
         st.error(f"전처리 실패: {exc}")
         st.exception(exc)
@@ -92,7 +109,7 @@ if draw_layout:
     with st.spinner(f"레이아웃 검출 중… ({layout_model})"):
         try:
             layout_result = detect_layout(
-                result.enhanced,
+                working,
                 model_name=layout_model,
                 threshold=layout_threshold,
             )
@@ -100,34 +117,49 @@ if draw_layout:
             st.error(f"레이아웃 검출 실패: {exc}")
             st.exception(exc)
 
-st.success(
-    f"완료 — {result.elapsed_sec * 1000:.0f} ms · "
-    f"{result.original.shape[1]}×{result.original.shape[0]} → "
-    f"{result.enhanced.shape[1]}×{result.enhanced.shape[0]}"
-    + (f" (×{result.scale:g})" if result.scale != 1.0 else "")
-    + (
-        f" · layout {len(layout_result.boxes)} boxes / "
-        f"{layout_result.elapsed_sec * 1000:.0f} ms"
-        if layout_result is not None
-        else ""
+status = []
+if pp_result is not None:
+    status.append(
+        f"preprocess {pp_result.elapsed_sec * 1000:.0f} ms · "
+        f"{pp_result.original.shape[1]}×{pp_result.original.shape[0]} → "
+        f"{pp_result.enhanced.shape[1]}×{pp_result.enhanced.shape[0]}"
+        + (f" (×{pp_result.scale:g})" if pp_result.scale != 1.0 else "")
     )
-)
-
-cols = st.columns(3 if layout_result is not None else 2)
-with cols[0]:
-    st.subheader("Before")
-    st.image(result.original, use_container_width=True)
-    st.caption(f"{result.original.shape[1]}×{result.original.shape[0]}")
-with cols[1]:
-    st.subheader(f"After ({result.method})")
-    st.image(result.enhanced, use_container_width=True)
-    st.caption(f"{result.enhanced.shape[1]}×{result.enhanced.shape[0]}")
+else:
+    status.append(f"원본 {working.shape[1]}×{working.shape[0]}")
 if layout_result is not None:
-    with cols[2]:
-        st.subheader(f"Layout ({layout_result.model_name})")
-        st.image(layout_result.annotated, use_container_width=True)
-        st.caption(f"{len(layout_result.boxes)} regions")
+    status.append(
+        f"layout {len(layout_result.boxes)} boxes / "
+        f"{layout_result.elapsed_sec * 1000:.0f} ms"
+    )
+st.success("완료 — " + " · ".join(status))
 
+panels: list[tuple[str, object, str]] = [("원본", pil, f"{pil.size[0]}×{pil.size[1]}")]
+if pp_result is not None:
+    panels.append(
+        (
+            f"After ({pp_result.method})",
+            pp_result.enhanced,
+            f"{pp_result.enhanced.shape[1]}×{pp_result.enhanced.shape[0]}",
+        )
+    )
+if layout_result is not None:
+    panels.append(
+        (
+            f"Layout ({layout_result.model_name})",
+            layout_result.annotated,
+            f"{len(layout_result.boxes)} regions",
+        )
+    )
+
+cols = st.columns(len(panels))
+for col, (title, image, caption) in zip(cols, panels, strict=True):
+    with col:
+        st.subheader(title)
+        st.image(image, use_container_width=True)
+        st.caption(caption)
+
+if layout_result is not None:
     st.subheader("검출 영역")
     st.dataframe(
         [
@@ -145,19 +177,20 @@ if layout_result is not None:
         hide_index=True,
     )
 
-dl1, dl2 = st.columns(2)
-with dl1:
-    buf = BytesIO()
-    Image.fromarray(result.enhanced).save(buf, format="PNG")
-    st.download_button(
-        "전처리 결과 PNG 다운로드",
-        data=buf.getvalue(),
-        file_name=f"pp_{pp_method}_{Path(uploaded.name).stem}.png",
-        mime="image/png",
-        use_container_width=True,
-    )
+dl_cols = st.columns(2)
+if pp_result is not None:
+    with dl_cols[0]:
+        buf = BytesIO()
+        Image.fromarray(pp_result.enhanced).save(buf, format="PNG")
+        st.download_button(
+            "전처리 결과 PNG 다운로드",
+            data=buf.getvalue(),
+            file_name=f"pp_{pp_method}_{Path(uploaded.name).stem}.png",
+            mime="image/png",
+            use_container_width=True,
+        )
 if layout_result is not None:
-    with dl2:
+    with dl_cols[1 if pp_result is not None else 0]:
         layout_buf = BytesIO()
         Image.fromarray(layout_result.annotated).save(layout_buf, format="PNG")
         st.download_button(
