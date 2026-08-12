@@ -1,4 +1,4 @@
-"""Streamlit demo: optional classic preprocess + optional PP-Layout overlay."""
+"""Streamlit demo: optional classic preprocess + optional PP-OCR overlay."""
 
 from __future__ import annotations
 
@@ -10,9 +10,16 @@ from PIL import Image
 
 from classic_enhance import CLASSIC_METHODS, ClassicMethod, working_image
 from layout_detect import (
+    DEFAULT_DET_MODEL,
     DEFAULT_LAYOUT_MODEL,
+    DEFAULT_REC_MODEL,
+    DET_MODELS,
     LAYOUT_MODELS,
+    REC_MODELS,
+    DetectMode,
+    detect_and_recognize,
     detect_layout,
+    detect_text_lines,
     layout_ready,
 )
 
@@ -23,7 +30,7 @@ st.set_page_config(
 )
 
 st.title("Classic Preprocess")
-st.caption("전처리·PP-Layout을 각각 켜고 끌 수 있습니다")
+st.caption("전처리·영역 검출·텍스트 인식(rec)을 각각 켜고 끌 수 있습니다")
 
 with st.sidebar:
     st.header("전처리")
@@ -44,17 +51,46 @@ with st.sidebar:
     if not layout_ready():
         st.warning("paddleocr 미설치 — `pip install paddlepaddle paddleocr`")
     draw_layout = st.checkbox(
-        "PP-Layout으로 영역 검출",
+        "영역 검출",
         value=False,
         disabled=not layout_ready(),
-        help="전처리가 켜져 있으면 전처리 결과, 꺼져 있으면 원본에서 영역을 찾습니다.",
+        help="전처리가 켜져 있으면 전처리 결과, 꺼져 있으면 원본에서 검출합니다.",
+    )
+    detect_mode: DetectMode = st.radio(  # type: ignore[assignment]
+        "검출 단위",
+        options=["layout", "text"],
+        format_func=lambda m: "레이아웃 영역" if m == "layout" else "텍스트 라인",
+        index=0,
+        disabled=not draw_layout,
+        help="레이아웃=영수증 덩어리, 텍스트 라인=줄/필드 단위(PP-OCR det)",
+        horizontal=True,
+    )
+    apply_rec = st.checkbox(
+        "텍스트 인식 (rec)",
+        value=False,
+        disabled=not draw_layout or detect_mode != "text" or not layout_ready(),
+        help="텍스트 라인 박스마다 korean_PP-OCRv5_mobile_rec로 글자를 읽습니다.",
     )
     layout_model = st.selectbox(
-        "model",
+        "layout model",
         options=list(LAYOUT_MODELS),
         index=list(LAYOUT_MODELS).index(DEFAULT_LAYOUT_MODEL),
-        disabled=not draw_layout,
+        disabled=not draw_layout or detect_mode != "layout",
         help="기본은 PP-DocLayoutV3. S/M은 가볍고, L/V2도 선택 가능합니다.",
+    )
+    det_model = st.selectbox(
+        "text det model",
+        options=list(DET_MODELS),
+        index=list(DET_MODELS).index(DEFAULT_DET_MODEL),
+        disabled=not draw_layout or detect_mode != "text",
+        help="줄 단위 박스. PP-OCRv6_medium_det이 기본입니다.",
+    )
+    rec_model = st.selectbox(
+        "text rec model",
+        options=list(REC_MODELS),
+        index=list(REC_MODELS).index(DEFAULT_REC_MODEL),
+        disabled=not apply_rec,
+        help="한글 영수증은 korean_PP-OCRv5_mobile_rec 권장.",
     )
     layout_threshold = st.slider(
         "threshold",
@@ -62,7 +98,7 @@ with st.sidebar:
         max_value=0.9,
         value=0.4,
         step=0.05,
-        disabled=not draw_layout,
+        disabled=not draw_layout or detect_mode != "layout",
     )
     st.divider()
     st.markdown("```bash\npip install -r requirements.txt\nstreamlit run app.py\n```")
@@ -106,15 +142,33 @@ with st.spinner("전처리 중…" if apply_preprocess else "이미지 준비 �
 
 layout_result = None
 if draw_layout:
-    with st.spinner(f"레이아웃 검출 중… ({layout_model})"):
+    if detect_mode == "layout":
+        detect_name = layout_model
+    elif apply_rec:
+        detect_name = f"{det_model} + {rec_model}"
+    else:
+        detect_name = det_model
+    with st.spinner(f"영역 검출 중… ({detect_name})"):
         try:
-            layout_result = detect_layout(
-                working,
-                model_name=layout_model,
-                threshold=layout_threshold,
-            )
+            if detect_mode == "layout":
+                layout_result = detect_layout(
+                    working,
+                    model_name=layout_model,
+                    threshold=layout_threshold,
+                )
+            elif apply_rec:
+                layout_result = detect_and_recognize(
+                    working,
+                    det_model=det_model,
+                    rec_model=rec_model,
+                )
+            else:
+                layout_result = detect_text_lines(
+                    working,
+                    model_name=det_model,
+                )
         except Exception as exc:  # noqa: BLE001
-            st.error(f"레이아웃 검출 실패: {exc}")
+            st.error(f"영역 검출 실패: {exc}")
             st.exception(exc)
 
 status = []
@@ -129,9 +183,14 @@ else:
     status.append(f"원본 {working.shape[1]}×{working.shape[0]}")
 if layout_result is not None:
     status.append(
-        f"layout {len(layout_result.boxes)} boxes / "
+        f"det {len(layout_result.boxes)} boxes / "
         f"{layout_result.elapsed_sec * 1000:.0f} ms"
     )
+    if layout_result.rec_model_name:
+        nonempty = sum(1 for b in layout_result.boxes if b.text.strip())
+        status.append(
+            f"rec {nonempty} texts / {layout_result.rec_elapsed_sec * 1000:.0f} ms"
+        )
 st.success("완료 — " + " · ".join(status))
 
 panels: list[tuple[str, object, str]] = [("원본", pil, f"{pil.size[0]}×{pil.size[1]}")]
@@ -144,9 +203,12 @@ if pp_result is not None:
         )
     )
 if layout_result is not None:
+    title = f"OCR ({layout_result.model_name})"
+    if layout_result.rec_model_name:
+        title = f"OCR ({layout_result.model_name} + rec)"
     panels.append(
         (
-            f"Layout ({layout_result.model_name})",
+            title,
             layout_result.annotated,
             f"{len(layout_result.boxes)} regions",
         )
@@ -161,21 +223,21 @@ for col, (title, image, caption) in zip(cols, panels, strict=True):
 
 if layout_result is not None:
     st.subheader("검출 영역")
-    st.dataframe(
-        [
-            {
-                "label": box.label,
-                "score": round(box.score, 3),
-                "x1": round(box.coordinate[0], 1),
-                "y1": round(box.coordinate[1], 1),
-                "x2": round(box.coordinate[2], 1),
-                "y2": round(box.coordinate[3], 1),
-            }
-            for box in layout_result.boxes
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
+    rows = []
+    for box in layout_result.boxes:
+        row = {
+            "label": box.label,
+            "score": round(box.score, 3),
+            "x1": round(box.coordinate[0], 1),
+            "y1": round(box.coordinate[1], 1),
+            "x2": round(box.coordinate[2], 1),
+            "y2": round(box.coordinate[3], 1),
+        }
+        if layout_result.rec_model_name is not None:
+            row["text"] = box.text
+            row["rec_score"] = round(box.rec_score, 3)
+        rows.append(row)
+    st.dataframe(rows, use_container_width=True, hide_index=True)
 
 dl_cols = st.columns(2)
 if pp_result is not None:
@@ -194,9 +256,9 @@ if layout_result is not None:
         layout_buf = BytesIO()
         Image.fromarray(layout_result.annotated).save(layout_buf, format="PNG")
         st.download_button(
-            "레이아웃 박스 PNG 다운로드",
+            "박스 PNG 다운로드",
             data=layout_buf.getvalue(),
-            file_name=f"layout_{layout_model}_{Path(uploaded.name).stem}.png",
+            file_name=f"layout_{detect_name.replace(' + ', '_')}_{Path(uploaded.name).stem}.png",
             mime="image/png",
             use_container_width=True,
         )
