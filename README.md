@@ -11,7 +11,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-이미지를 업로드한 뒤 **전처리 실행**을 누르면 전후 비교가 표시됩니다.
+이미지를 업로드한 뒤 사이드바에서 **전처리** / **PP-Layout**을 켜고 **실행**을 누르면 결과가 표시됩니다. 전처리를 끄면 원본에 바로 레이아웃 검출을 돌립니다.
 
 ## 기본 파이프라인 (`receipt`)
 
@@ -100,13 +100,17 @@ RGB 원본
 
 ## PP-Layout 영역 검출 (선택)
 
-전처리 결과에 [PP-DocLayout](https://www.paddleocr.ai/latest/en/version3.x/module_usage/layout_detection.html)을 돌려 text / title / table / figure 등 영역을 찾고, 이미지에 박스를 그릴 수 있습니다.
+[PP-DocLayout](https://www.paddleocr.ai/latest/en/version3.x/module_usage/layout_detection.html)으로 text / title / table / figure 등 영역을 찾고, 이미지에 박스를 그릴 수 있습니다. 전처리와 레이아웃은 각각 켜고 끌 수 있습니다.
 
 1. (한 번) `pip install paddlepaddle paddleocr`
-2. 사이드바에서 **PP-Layout으로 영역 검출**을 켭니다.
-3. **전처리 실행** → After 옆에 박스 오버레이와 영역 테이블이 나옵니다.
+2. 사이드바에서 **전처리 적용**, **영역 검출**을 원하는 대로 켭니다.
+3. 검출 단위를 고릅니다.
+   - **레이아웃 영역**: PP-DocLayoutV3. 제목·본문·표 같은 큰 덩어리(영수증 2장이면 보통 박스 2개).
+   - **텍스트 라인**: PP-OCR det. 줄/필드 단위로 더 잘게 잡습니다.
+4. 텍스트 라인을 켠 뒤 **텍스트 인식 (rec)** 을 켜면 박스마다 `korean_PP-OCRv5_mobile_rec`로 글자를 읽고 테이블에 표시합니다.
+5. **실행** → 원본 / After(전처리 켠 경우) / OCR(검출 켠 경우)이 표시됩니다.
 
-기본 모델은 `PP-DocLayoutV3`입니다. 영역 검출·분류·읽기 순서가 가장 최신이고, 기울어지거나 복잡한 문서에도 더 안정적입니다. CPU에서 더 빠르게 돌리려면 `PP-DocLayout-S` / `M`을 고르세요. 첫 실행 때 모델 가중치를 다운로드합니다.
+레이아웃 기본 모델은 `PP-DocLayoutV3`입니다. 텍스트 라인은 `PP-OCRv6_medium_det`, 인식은 `korean_PP-OCRv5_mobile_rec`가 기본입니다. 첫 실행 때 모델 가중치를 다운로드합니다.
 
 구현: `layout_detect.py` (`parse_layout_boxes` + `draw_layout_boxes` + `detect_layout`).
 
