@@ -5,10 +5,8 @@
 ## 빠른 시작
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py
+uv sync
+uv run streamlit run app.py
 ```
 
 이미지를 업로드한 뒤 사이드바에서 **전처리 적용**과 **영역 검출**을 원하는 대로 켜고 **실행**을 누르면 결과가 표시됩니다. 전처리를 끄면 원본에 바로 검출을 돌립니다.
@@ -111,7 +109,7 @@ RGB 원본
 
 텍스트 라인의 다른 선택지는 `PP-OCRv5_server_det`입니다. **텍스트 인식 (rec)** 을 켜면 박스마다 글자를 읽습니다. 기본은 `korean_PP-OCRv5_mobile_rec`이고, `en_PP-OCRv5_mobile_rec`, `PP-OCRv5_server_rec`도 고를 수 있습니다.
 
-1. (한 번) `pip install paddlepaddle paddleocr`
+1. (한 번) `uv sync --extra ocr`
 2. 사이드바에서 **전처리 적용**, **영역 검출**을 원하는 대로 켭니다.
 3. 검출 단위에서 **레이아웃 영역** 또는 **텍스트 라인**을 고릅니다.
 4. 텍스트 라인을 켠 뒤 **텍스트 인식 (rec)** 을 켜면 박스 글자가 테이블에 나옵니다.
@@ -129,6 +127,8 @@ RGB 원본
 
 | 경로 | 설명 |
 |------|------|
+| `pyproject.toml` | uv 의존성. 검출·인식은 `ocr` extra |
+| `uv.lock` | 잠긴 의존성 |
 | `app.py` | Streamlit UI. 전처리·검출·인식을 각각 켜고 끕니다 |
 | `classic_enhance.py` | OpenCV 전처리. `working_image()`가 검출에 넣을 이미지를 고릅니다 |
 | `layout_detect.py` | PP-DocLayout 영역 검출, `PP-OCRv6_medium_det` 텍스트 라인, rec |

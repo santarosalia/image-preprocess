@@ -49,7 +49,7 @@ with st.sidebar:
     st.divider()
     st.header("레이아웃")
     if not layout_ready():
-        st.warning("paddleocr 미설치 — `pip install paddlepaddle paddleocr`")
+        st.warning("paddleocr 미설치 — `uv sync --extra ocr`")
     draw_layout = st.checkbox(
         "영역 검출",
         value=False,
@@ -101,7 +101,7 @@ with st.sidebar:
         disabled=not draw_layout or detect_mode != "layout",
     )
     st.divider()
-    st.markdown("```bash\npip install -r requirements.txt\nstreamlit run app.py\n```")
+    st.markdown("```bash\nuv sync\nuv run streamlit run app.py\n```")
 
 uploaded = st.file_uploader(
     "이미지 업로드",
