@@ -49,7 +49,7 @@ with st.sidebar:
     st.divider()
     st.header("레이아웃")
     if not layout_ready():
-        st.warning("paddleocr 미설치 — `uv sync --extra ocr`")
+        st.warning("paddleocr 미설치 — `uv sync`")
     draw_layout = st.checkbox(
         "영역 검출",
         value=False,

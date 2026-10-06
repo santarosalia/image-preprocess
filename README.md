@@ -109,7 +109,7 @@ RGB 원본
 
 텍스트 라인의 다른 선택지는 `PP-OCRv5_server_det`입니다. **텍스트 인식 (rec)** 을 켜면 박스마다 글자를 읽습니다. 기본은 `korean_PP-OCRv5_mobile_rec`이고, `en_PP-OCRv5_mobile_rec`, `PP-OCRv5_server_rec`도 고를 수 있습니다.
 
-1. (한 번) `uv sync --extra ocr`
+1. `uv sync`로 `paddleocr` 3.7 이상이 함께 설치됩니다. 그 이전에는 `PP-OCRv6_medium_det`가 등록되어 있지 않습니다.
 2. 사이드바에서 **전처리 적용**, **영역 검출**을 원하는 대로 켭니다.
 3. 검출 단위에서 **레이아웃 영역** 또는 **텍스트 라인**을 고릅니다.
 4. 텍스트 라인을 켠 뒤 **텍스트 인식 (rec)** 을 켜면 박스 글자가 테이블에 나옵니다.
@@ -127,7 +127,7 @@ RGB 원본
 
 | 경로 | 설명 |
 |------|------|
-| `pyproject.toml` | uv 의존성. 검출·인식은 `ocr` extra |
+| `pyproject.toml` | uv 의존성. PaddleOCR 3.7 이상을 포함합니다 |
 | `uv.lock` | 잠긴 의존성 |
 | `app.py` | Streamlit UI. 전처리·검출·인식을 각각 켜고 끕니다 |
 | `classic_enhance.py` | OpenCV 전처리. `working_image()`가 검출에 넣을 이미지를 고릅니다 |
