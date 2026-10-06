@@ -11,7 +11,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-이미지를 업로드한 뒤 사이드바에서 **전처리** / **PP-Layout**을 켜고 **실행**을 누르면 결과가 표시됩니다. 전처리를 끄면 원본에 바로 레이아웃 검출을 돌립니다.
+이미지를 업로드한 뒤 사이드바에서 **전처리 적용**과 **영역 검출**을 원하는 대로 켜고 **실행**을 누르면 결과가 표시됩니다. 전처리를 끄면 원본에 바로 검출을 돌립니다.
 
 ## 기본 파이프라인 (`receipt`)
 
@@ -98,26 +98,37 @@ RGB 원본
 | `adaptive` | adaptive 이진화 (block=31, C=10) |
 | `otsu` | Otsu 이진화 |
 
-## PP-Layout 영역 검출 (선택)
+## 영역 검출·텍스트 인식 (선택)
 
-[PP-DocLayout](https://www.paddleocr.ai/latest/en/version3.x/module_usage/layout_detection.html)으로 text / title / table / figure 등 영역을 찾고, 이미지에 박스를 그릴 수 있습니다. 전처리와 레이아웃은 각각 켜고 끌 수 있습니다.
+전처리와 검출은 각각 켜고 끌 수 있습니다. 검출은 두 단위입니다.
+
+| 검출 단위 | 기본 모델 | 잡는 것 |
+|-----------|-----------|---------|
+| 레이아웃 영역 | `PP-DocLayoutV3` | 제목·본문·표 같은 큰 덩어리. 영수증 2장이면 보통 박스 2개 |
+| 텍스트 라인 | `PP-OCRv6_medium_det` | 줄·필드 단위. 카드번호, 총액 같은 행 |
+
+레이아웃은 [PP-DocLayout](https://www.paddleocr.ai/latest/en/version3.x/module_usage/layout_detection.html)으로 text / title / table / figure 등을 찾습니다. 다른 선택지는 `PP-DocLayoutV2`, `PP-DocLayout_plus-L`, `PP-DocLayout-L`, `PP-DocLayout-M`, `PP-DocLayout-S`입니다. CPU에서 더 빠르게 돌리려면 `S` / `M`을 고르세요.
+
+텍스트 라인의 다른 선택지는 `PP-OCRv5_server_det`입니다. **텍스트 인식 (rec)** 을 켜면 박스마다 글자를 읽습니다. 기본은 `korean_PP-OCRv5_mobile_rec`이고, `en_PP-OCRv5_mobile_rec`, `PP-OCRv5_server_rec`도 고를 수 있습니다.
 
 1. (한 번) `pip install paddlepaddle paddleocr`
 2. 사이드바에서 **전처리 적용**, **영역 검출**을 원하는 대로 켭니다.
-3. 검출 단위를 고릅니다.
-   - **레이아웃 영역**: PP-DocLayoutV3. 제목·본문·표 같은 큰 덩어리(영수증 2장이면 보통 박스 2개).
-   - **텍스트 라인**: PP-OCR det. 줄/필드 단위로 더 잘게 잡습니다.
-4. 텍스트 라인을 켠 뒤 **텍스트 인식 (rec)** 을 켜면 박스마다 `korean_PP-OCRv5_mobile_rec`로 글자를 읽고 테이블에 표시합니다.
+3. 검출 단위에서 **레이아웃 영역** 또는 **텍스트 라인**을 고릅니다.
+4. 텍스트 라인을 켠 뒤 **텍스트 인식 (rec)** 을 켜면 박스 글자가 테이블에 나옵니다.
 5. **실행** → 원본 / After(전처리 켠 경우) / OCR(검출 켠 경우)이 표시됩니다.
 
-레이아웃 기본 모델은 `PP-DocLayoutV3`입니다. 텍스트 라인은 `PP-OCRv6_medium_det`, 인식은 `korean_PP-OCRv5_mobile_rec`가 기본입니다. 첫 실행 때 모델 가중치를 다운로드합니다.
+첫 실행 때 모델 가중치를 다운로드합니다.
 
-구현: `layout_detect.py` (`parse_layout_boxes` + `draw_layout_boxes` + `detect_layout`).
+구현: `layout_detect.py`
+
+- 레이아웃: `detect_layout`, `parse_layout_boxes`, `draw_layout_boxes`
+- 텍스트 라인: `detect_text_lines`, `parse_text_boxes`
+- 인식: `detect_and_recognize`, `recognize_boxes`
 
 ## 구성
 
 | 경로 | 설명 |
 |------|------|
-| `app.py` | Streamlit UI |
-| `classic_enhance.py` | OpenCV 전처리 |
-| `layout_detect.py` | PP-DocLayout 영역 검출·박스 오버레이 |
+| `app.py` | Streamlit UI. 전처리·검출·인식을 각각 켜고 끕니다 |
+| `classic_enhance.py` | OpenCV 전처리. `working_image()`가 검출에 넣을 이미지를 고릅니다 |
+| `layout_detect.py` | PP-DocLayout 영역 검출, `PP-OCRv6_medium_det` 텍스트 라인, rec |
